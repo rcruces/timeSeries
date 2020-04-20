@@ -11,10 +11,10 @@ initial value of a variable, *x*<sub>0</sub> say, we generate a sequence
 of values, *x*<sub>1</sub>, *x*<sub>2</sub>, etc. from the map
 (i.e. function), *x*<sub>*n* + 1</sub> = *f*(*x*<sub>*n*</sub>) where we
 here make a simple choice
-*f*(*x*) = 4*λ**x*<sub>*n*</sub>(1 − *x*<sub>*n*</sub>)
+*f*(*x*) = 4*λ*x<sub>*n*</sub>(1 − *x*<sub>*n*</sub>)
 where *λ* is parameter. In other words,
-*x*<sub>1</sub> = 4*λ**x*<sub>0</sub>(1 − *x*<sub>0</sub>),
-*x*<sub>2</sub> = 4*λ**x*<sub>1</sub>(1 − *x*<sub>1</sub>), etc. We will
+*x*<sub>1</sub> = 4*λx*<sub>0</sub>(1 − *x*<sub>0</sub>),
+*x*<sub>2</sub> = 4*λx*<sub>1</sub>(1 − *x*<sub>1</sub>), etc. We will
 be interested in the behavior of successive iterations of this map, as a
 function of the parameter *λ*. In particular we will study the behavior
 of the *x*<sub>*n*</sub> for large n.  
@@ -27,7 +27,7 @@ dynamics, but here we just treat it as a toy model which has a
 transition to chaos.
 
 The logistic map function for population growing is define following:  
-*X*<sub>*n*</sub> = *r**x*(1 − *x*)
+*X*<sub>*n*</sub> = *rx*(1 − *x*)
 Where *x* ∈ {0, 1}, represents the ratio of existing population to the
 maximum possible population (1).  
 *X*<sub>*n*</sub> is the new population after *n* generations.  
