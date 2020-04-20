@@ -1,0 +1,185 @@
+---
+title: "Logistic map"
+author: "RRC"
+date: ""
+output:
+  md_document:
+    variant: markdown_github
+---
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Logistic map: discrete dynamical systems
+Most realistic systems with chaotic behavior, such as fluid flow around an obstacle, are described by a non-linear partial differential equation, which determines how the velocity changes in space and time. We will see later in the course that chaos also occurs in many ordinary (non-linear) differential equations. Here we will consider something even simpler, an "iterative map". This means that starting from an initial value of a variable, $x_0$ say, we generate a sequence of values, $x_1$, $x_2$, etc. from the map (i.e. function), $x_{n+1} = f(x_n)$ where we here make a simple choice $$f(x) = 4 \lambda x_n (1-x_n)$$ where $\lambda$ is parameter. In other words, $x_1 = 4 \lambda x_0 (1-x_0)$, $x_2 = 4 \lambda x_1 (1-x_1)$, etc. We will be interested in the behavior of successive iterations of this map, as a function of the parameter $\lambda$. In particular we will study the behavior of the $x_n$ for large n.  
+We consider $\lambda$ in the range from 0 to 1, so, if $x_0$ is between 0 and 1, it is easy to see that all subsequent values of x also lie in this range. In fact the largest value of $x_{n+1}$ (which occurs for $x_n= 1/2$) is equal to $\lambda$.  
+This so-called "logistic map" has been used as model for population dynamics, but here we just treat it as a toy model which has a transition to chaos.
+
+The logistic map function for population growing is define following:  
+$$X_n = rx(1-x)$$
+Where $x \in \{0, 1\}$, represents the ratio of existing population to the maximum possible population (1).  
+$X_n$ is the new population after $n$ generations.  
+$r$ is the combined rate between reproduction and mortality.  
+
+```{r lm, echo=FALSE, message=FALSE}
+# libraries
+library(compiler) 
+library(viridis)
+library(plot3D)
+library(nonlinearTseries)
+P <- function(Path){koti=Sys.getenv("KOTI"); return(paste0(koti,Path))}
+source(P("git_here/miscellaneous/R-functions.R"))
+# Functions
+Xp <- function(r, x0, N, Plot=FALSE, Col='black', M=N) {
+  # Xn  Xn ∈ [0, 1], that represents the ratio of existing 
+  #     population to the maximum possible population (1).
+  # x - intial value
+  # r - combined rate between reproduction and mortality
+  Xn <- 1:N
+  Xn[1] <- x0
+for (i in 1:(N-1)) { Xn[i+1] <- r*Xn[i]*(1-Xn[i]) }
+   Xn <- Xn[c((N-M+1):N)]
+   if (Plot==TRUE) {
+    plot(1:M,Xn, xlab='Generations (time iteration)', ylab='Population', type='l', bty='n', ylim=c(0,1), col=Col)
+    points(1:M,Xn,pch=20, cex=0.5, col=Col)}
+  return(Xn)  
+}
+Xp <- cmpfun(Xp) 
+
+col.match <- function(Val, colMap, Range){
+  # function to match color
+  # Return the color equivalence for the range
+  Val <- ifelse(Val > max(Range),yes = max(Range),no = Val)
+  Val <- ifelse(Val < min(Range),yes = min(Range),no = Val)
+  S <- gsub(" ","",format(seq(Range[1], Range[2],0.01),nsmall=2))
+  Q <- gsub(" ","",format(round(Val,2),nsmall=2))
+  Col <- colMap(length(S))
+  return(Col[match(Q,S)])}
+```
+
+##  Population for different *r* values
+```{r population, echo=FALSE, fig.width=12}
+# ------------------------------------------------------------------------------------
+# Discrete dynamical systems, Ppulation for diferen r values
+N <- 60
+D <- Xp(x0=0.001,r = 0.4, N = N, Plot = TRUE, Col=NA)
+r <- seq(0.7,by = 0.5,length.out = 7)
+for (i in 7:1) { lines(1:N, Xp(x0 = 0.001, r = r[i], N = N), col=magma(7, end = 0.85)[i], lwd=1.5) }
+```
+  
+```{r logisticmap-var, echo=FALSE, fig.width=12, fig.width=12}
+N  <- 1000
+L  <- 700
+r  <- seq(2.5,4,0.003)
+x0 <- 0.1
+logicMap <- as.vector(sapply(r, Xp, x=x0, N=N, M=L))
+
+M <- c()
+for (i in 1:length(r)) {
+  D <- as.vector(Xp(r[i], x0, N, M = L))
+  M <- c(M, var(D)) }
+  #M <- c(M,length(unique(hist(D,breaks = seq(-0.5,1.5,length.out = N+1),plot = FALSE)$counts))) }
+Col <- col.match(normalize01(M), magma, c(0.5, 0.57))
+plot(r, M, col=Col, cex=0.5, pch=20, main='Population variance per r', bty='n', ylab='variance')
+
+Col.long <- rep(Col, each=L)
+r.long <- sort(rep(r, L),decreasing = FALSE)
+plot(r.long, logicMap, pch=".",  bty='n', xlab='Growth rate (r)', ylab='Population', col=Col.long, main='Logistic map colored \nby population variance')
+
+```
+
+## Poincaré phase diagram (self-similarity recurrence plot)  
+``` {r phase,  echo=FALSE, fig.width=12}
+N <- 100
+par(mfrow=c(2,1))
+D <- Xp(x0=0.001,r = 3.7, N = N, Plot = TRUE, Col='midnightblue')
+plot(D[1:N-1], D[2:N], xlim = c(0,1), ylim = c(0,1), bty='n', pch=20, cex=0.25, col='midnightblue', xlab = expression(x[t]), ylab = expression(x[t+1]))
+
+# Poincaré 2D phase diagram
+par(mfrow=c(1,2))
+r <- seq(2.5,4,0.01)
+n <- length(r)
+Col <- viridis(n,begin = 0.12, end = 0.9,direction = -1)
+# plots D1 and D2
+plot(D[1:N-1], D[2:N], xlim = c(0,1), ylim = c(0,1), bty='n', pch=20, cex=0.25, col=NA, xlab = expression(x[t]), ylab = expression(x[t+1]))
+for (i in 1:n) { D <- Xp(x0=0.001,r = r[i], N = N, Plot = FALSE)
+  points(D[1:N-1], D[2:N], col=Col[i], pch=20, cex=0.25)}
+# plots D1 and D3
+plot(D[1:(N-2)], D[3:N], xlim = c(0,1), ylim = c(0,1), bty='n', pch=20, cex=0.25, col=NA, xlab = expression(x[t]), ylab = expression(x[t+2]))
+for (i in 1:n) { D <- Xp(x0=0.001,r = r[i], N = N, Plot = FALSE)
+  points(D[1:(N-2)], D[3:N], col=Col[i], pch=20, cex=0.25)}
+
+# Poincaré 3D phase diagram
+par(mfrow=c(1,1))
+x <- D[1:(N-2)]
+y <- D[2:(N-1)]
+z <- D[3:N]
+scatter3D(x, y, z, bty = "g", colkey = FALSE, main ="Poincaré phase diagram", 
+          col = NA, pch=20, cex=0.25, phi = 30,theta = 45
+          ,xlab="X(t)", ylab="X(t+1)", zlab="X(t+2)" , xlim=c(0,1), ylim=c(0,1), zlim=c(0,1))
+for (i in 1:n) { D <- Xp(x0=0.001,r = r[i], N = N, Plot = FALSE)
+points3D(D[1:(N-2)], D[2:(N-1)], D[3:N], col = Col[i], pch=20, cex=0.25, add=TRUE, colkey=FALSE)
+}
+```
+
+## Recurrence plot of the time series  
+http://www.recurrence-plot.tk/glance.php
+``` {r recur,  echo=FALSE, fig.width=12}
+par(mfrow=c(2,1))
+D1 <- Xp(x0=0.001,r = 3.4, N = 50, Plot = TRUE, Col='gray35', M=40)
+D2 <- Xp(x0=0.001,r = 3.7, N = 150, Plot = TRUE, Col='gray35', M=100)
+
+par(mfrow=c(1,2))
+recurrencePlot(takens = NULL, time.series = D1,
+               embedding.dim = 3, time.lag = 1, radius = 0.1, main='r = 3.4, N=100')
+recurrencePlot(takens = NULL, time.series = D2,
+               embedding.dim = 3, time.lag = 1, radius = 0.1, main='r = 3.7, N=100')
+```
+
+
+## Further lectures:  
+https://geoffboeing.com/2015/03/chaos-theory-logistic-map/   
+http://www.kierandkelly.com/from-chaos-to-creativity/  
+http://www.kierandkelly.com/what-is-chaos/logistic-map/  
+  
+  
+## Extra: r for negative values  
+
+```{r logisticmapLong, echo=FALSE, fig.width=12}
+# ------------------------------------------------------------------------------------ # Number of iterations
+N <- 300
+r <- seq(-2,4,0.001)
+# Compute logistic map
+#system.time(logicMap <- as.vector(sapply(r, Xp, x=0.01, N=N)))
+logicMap <- as.vector(sapply(r, Xp, x=0.01, N=N))
+r.long <- sort(rep(r, N),decreasing = FALSE)
+plot(r.long, logicMap, pch=".", col=rgb(0,0,0,0.05), bty='n', xlab='r-value', ylab='Population', axes = T, main='r = {-2 : 4}')
+abline(h=1,col='red',lty=2)
+```
+
+```{r logisticmapNeg, echo=FALSE, fig.width=12}
+# ------------------------------------------------------------------------------------ # Number of iterations
+# Negative Values of the r parameter
+N <- 100
+r <- seq(-2,-0.9,0.001)
+logicMap <- as.vector(sapply(r, Xp, x=0.01, N=N))
+r.long <- sort(rep(r, N),decreasing = FALSE)*-1
+plot(logicMap, r.long, pch=".", col=rgb(0,0,0,0.05), bty='n', xlab='r-value', ylab='Population', axes = FALSE, main='r = {-2 : -0.9}')
+abline(h=1.44,col='gray45',lty=2)
+N <- 200
+r <- seq(-2,-1.44,0.001)
+logicMap <- as.vector(sapply(r, Xp, x=0.01, N=N))
+r.long <- sort(rep(r, N),decreasing = FALSE)*-1
+plot(logicMap, r.long, pch=".", col=rgb(0,0,0,0.05), bty='n', xlab='', ylab='', axes = FALSE, main='r = {-2 : -1.44}')
+abline(h=1.44,col='gray45',lty=2)
+```
+
+```{r logisticmapMirror, echo=FALSE, fig.width=7, fig.height=7}
+# Positive Values of the r parameter
+N<-80
+r <- seq(0.9,4,0.001)
+logicMap <- as.vector(sapply(r, Xp, x=0.01, N=N))
+r.long <- sort(rep(r, N),decreasing = FALSE)
+plot(c(r.long*-1,r.long-1.8,r.long*-1,r.long-1.8), c(logicMap,logicMap,logicMap*-1,logicMap*-1), pch=".", col=rgb(0,0,0,0.05), bty='n', xlab='', ylab='', axes = FALSE)
+```
