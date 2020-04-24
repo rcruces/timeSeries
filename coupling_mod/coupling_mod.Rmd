@@ -1,0 +1,24 @@
+---
+title: "Coupling Modulation"
+author: "RRC"
+output: html_notebook
+---
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Read the data
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# https://hansenjohnson.org/post/spectrograms-in-r/
+P <- function(Path){koti=Sys.getenv("KOTI"); return(paste0(koti,Path))}
+Data <- read.table(P("git_here/timeSeries/coupling_mod/Basal.atf"),skip = 10,col.names = c("time","mV"))
+N5s <- which(Data$time==5)
+plot(Data$time[1:N5s], Data$mV[1:N5s], type='l', bty='n', xlab = 'Time (ms)', ylab='mV', main='Time serie (5s)')
+```
+
+## Spectrogram of the time series
+  
+## 
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
