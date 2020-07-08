@@ -1,11 +1,16 @@
 ---
 title: "Coupling Modulation"
 author: "RRC"
-output: html_notebook
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE, echo=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(signal) # library for signal analysis
+library(viridis) # colormaps
+library(signal, warn.conflicts = F, quietly = T) # signal processing functions
+library(oce, warn.conflicts = F, quietly = T) # image plotting functions and nice color maps
+
 ```
 
 ## 1. Read the data
@@ -13,33 +18,88 @@ knitr::opts_chunk$set(echo = TRUE)
 # https://hansenjohnson.org/post/spectrograms-in-r/
 P <- function(Path){koti=Sys.getenv("KOTI"); return(paste0(koti,Path))}
 Data <- read.table(P("git_here/timeSeries/coupling_mod/Basal.atf"),skip = 10,col.names = c("time","mV"))
-N5s <- which(Data$time==5)
-plot(Data$time[1:N5s], Data$mV[1:N5s], type='l', bty='n', xlab = 'Time (ms)', ylab='mV', main='Time serie (5s)')
 ```
 
-## Spectrogram of the time series
-```{r}
-# Sampling frecuency
-Fs=5000
-# Nyquist ratio
-NyFq=Fs/2
-# Inferir gamma limit
-Cut20=20/NyFq
-# Superior gamma limit
-Cut40=40/NyFq
-# Inferior theta limit
-Cut4=4/NyFq
-# Superior theta limit
-Cut11=11/NyFq
-# Coeficientes Butterworth para gamma 
-[Bg,Ag]=butter(4,[Cut20 Cut40])
-# Coeficientes Butterworth para theta
-[Bt,At]=butter(2,[Cut4 Cut11])
-# Filtro sin delay gamma
-gamma=filtfilt(Bg,Ag,LFP)
-# Filtro sin delay theta
-theta=filtfilt(Bt,At,LFP)
+## Spectrogram of the raw time series  
+```{r spectro, echo=FALSE, message=FALSE, warning=FALSE}
+# Local Field Potential Signal (LFP)
+N5s <- which(Data$time==3) # Only three seconds for test
+LFP <- Data$mV[1:N5s]
+LFP.t <- Data$time[1:N5s]
+# Sampling frecuency (Hz)
+Fs <- 5000
 
+# create spectrogram
+spec <- specgram(x = LFP,
+                n = min(256, length(LFP)), # size of the fourier window
+                Fs = Fs,                   # Sample rate, Hz
+                # window = window,
+                # overlap = overlap
+                )
+
+# discard phase information
+Phase <- abs(spec$S)
+
+# normalize
+Phase <- Phase/max(Phase)
+
+# convert to dB
+Phase <- 10*log10(Phase)
+
+# config time axis
+Time <- spec$t
+
+# plot spectrogram
+imagep(x = Time,
+       y = spec$f,
+       z = t(Phase),
+       col = magma,
+       ylab = 'Frequency [Hz]',
+       xlab = 'Time [s]',
+       drawPalette = T,
+       decimate = F
+)
+```
+  
+  
+## Filtering of the data
+```{r filters, echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+# Nyquist ratio
+NyFq <- Fs/2
+
+# Inrerior gamma limit
+Cut20 <- 20/NyFq
+# Superior gamma limit
+Cut40 <- 40/NyFq
+
+# Inferior theta limit
+Cut4 <- 4/NyFq
+# Superior theta limit
+Cut11 <- 11/NyFq
+
+# Butterworth filter
+# Coeficientes Butterworth para gamma 
+# [Bg,Ag]=butter(4,[Cut20 Cut40])
+gamma.butter <- butter(4, W = c(Cut20, Cut40))
+
+# Coeficientes Butterworth para theta
+# [Bt,At]=butter(2,[Cut4 Cut11])
+theta.butter <- butter(2, W = c(Cut4, Cut11))
+
+# Forward And Reverse Filter (Zero-phase digital filtering)
+# gamma=filtfilt(Bg,a = Ag,LFP)
+
+gamma.0phase <- filtfilt(filt = gamma.butter$b, a = gamma.butter$a, x = LFP)
+# Filtro sin delay theta
+# theta=filtfilt(Bt,At,LFP)
+theta.0phase <- filtfilt(filt = theta.butter$b, a = theta.butter$a, x = LFP)
+
+# plot
+par(mfrow=c(2,1))
+plot(Data$time[1:N5s], Data$mV[1:N5s], type='l', bty='n', xlab = 'Time (s)', ylab='mV', main='LFP raw data')
+
+plot(LFP.t,gamma.0phase, type='l', bty='n', xlab='Time (s)', ylab='mV', main="Gamma peaks over theta cycles", col="gray65")
+lines(LFP.t, theta.0phase, col='blue', lwd=2)
 ```
 
 ```{matlab}
@@ -47,29 +107,29 @@ filteredgamma=dataset(time,gamma);
 filteredtheta=dataset(time,theta);
  
 plot(time,gamma,time,theta)
-axis([0 1 -0.3 0.3]) %de 0 a 1 s y de -0.2 a 0.2 mV
+axis([0 1 -0.3 0.3]) # de 0 a 1 s y de -0.2 a 0.2 mV
 shg
  
-% Gamma peaks over theta cycles
+#  Gamma peaks over theta cycles
  
 clf; clf; 
  
-hilGamma=hilbert(gamma); %transformada de hilbert de la se?al de campo
-angGamma=angle(hilGamma); %extrae la fase instant?nea de la se?al de campo en radianes
-angGamma=angGamma-2*pi*floor(angGamma/(2*pi));%expande los ?ngulos obtenidos a un c?rculo completo (2*pi)
+hilGamma=hilbert(gamma); # transformada de hilbert de la se?al de campo
+angGamma=angle(hilGamma); # extrae la fase instant?nea de la se?al de campo en radianes
+angGamma=angGamma-2*pi*floor(angGamma/(2*pi));# expande los ?ngulos obtenidos a un c?rculo completo (2*pi)
  
-negGam=-angGamma;%invierte la se?al para encontrar los 90? = 0 rad
-[~,subGamma]=findpeaks(negGam,'MinPeakHeight',-0.5); %encuentra la posici?n todos los picos que superan el threshold 
+negGam=-angGamma;# invierte la se?al para encontrar los 90? = 0 rad
+[~,subGamma]=findpeaks(negGam,'MinPeakHeight',-0.5); # encuentra la posici?n todos los picos que superan el threshold 
 disp('Total de picos de gamma:')
 TotalGPeaks=length(subGamma);
  
  
-hilTheta=hilbert(theta); %transformada de hilbert de la se?al de campo
-angTheta=angle(hilTheta); %extrae la fase instant?nea de la se?al de campo en radianes
-angTheta=angTheta-2*pi*floor(angTheta/(2*pi));%expande los ?ngulos obtenidos a un c?rculo completo (2*pi)
+hilTheta=hilbert(theta); # transformada de hilbert de la se?al de campo
+angTheta=angle(hilTheta); # extrae la fase instant?nea de la se?al de campo en radianes
+angTheta=angTheta-2*pi*floor(angTheta/(2*pi));# expande los ?ngulos obtenidos a un c?rculo completo (2*pi)
  
-negTheta=-angTheta;%invierte la se?al para encontrar los 90? = 0 rad
-[~,subTheta]=findpeaks(negTheta,'MinPeakHeight',-0.01); %encuentra la posici?n todos los picos que superan el threshold 
+negTheta=-angTheta;# invierte la se?al para encontrar los 90? = 0 rad
+[~,subTheta]=findpeaks(negTheta,'MinPeakHeight',-0.01); # encuentra la posici?n todos los picos que superan el threshold 
 disp('Total de picos de Theta:')
 TotalTPeaks=length(subTheta);
  
@@ -77,51 +137,51 @@ disp('Gamma peaks per Theta cycle')
 GpeakPerTheta=TotalGPeaks/TotalTPeaks;
  
  
-gammaTheta=angTheta(subGamma);%encuentra el angulo de theta donde se encuentra los picos de gamma
+gammaTheta=angTheta(subGamma);# encuentra el angulo de theta donde se encuentra los picos de gamma
 figure(1)
 subplot(1,2,1)
 rose(gammaTheta)
  
-%C?LCULO DE LA LONGITUD DEL VECTOR
+# C?LCULO DE LA LONGITUD DEL VECTOR
 disp('Vector unitario medio:')
-u=sum(exp(1i*gammaTheta));%calcula el vector unitario medio (f?rmula de Euler)
+u=sum(exp(1i*gammaTheta));# calcula el vector unitario medio (f?rmula de Euler)
 disp('Longitud total del vector Normalizado:')
-absVecLength=abs(u)/TotalGPeaks; %obtiene el radio resultante (r) normalizado entre 0 y 1
+absVecLength=abs(u)/TotalGPeaks; # obtiene el radio resultante (r) normalizado entre 0 y 1
 figure(1)
 subplot(1,2,2)
 compass(u/TotalGPeaks)
  
-%C?LCULO DEL ANGULO DEL VECTOR GAMMA OVER THETA (gammaTheta)
+# C?LCULO DEL ANGULO DEL VECTOR GAMMA OVER THETA (gammaTheta)
 disp('?ngulo del vector en pi valores:')
-AngGammaTheta=angle(u); % Calcula el angulo del vector normalizado
+AngGammaTheta=angle(u); #  Calcula el angulo del vector normalizado
 disp('?ngulo del vector en radianes:')
-angGammaTheta_Rad=AngGammaTheta-2*pi*floor(AngGammaTheta/(2*pi)); %Expande el angR a 2pi
+angGammaTheta_Rad=AngGammaTheta-2*pi*floor(AngGammaTheta/(2*pi)); # Expande el angR a 2pi
  
 clf; clf;
  
-% Gamma Envelope
+#  Gamma Envelope
  
-% Nombra LFP a la variable que contiene el registro de campo
-% Nombra time a la variable que contiene el tiempo de registro
+#  Nombra LFP a la variable que contiene el registro de campo
+#  Nombra time a la variable que contiene el tiempo de registro
  
-%C?LCULO DE LA ENVOLVENTE
-[envolvente0,~]=envelope(gamma,100,'peak');%c?lculo de la envolvente ajustada al pico con 100 puntos de resoluci?n
-envolvente=envolvente0-mean(envolvente0);%ajuste de la envolvente a la basal
+# C?LCULO DE LA ENVOLVENTE
+[envolvente0,~]=envelope(gamma,100,'peak');# c?lculo de la envolvente ajustada al pico con 100 puntos de resoluci?n
+envolvente=envolvente0-mean(envolvente0);# ajuste de la envolvente a la basal
  
-%TRANSFORMADA DE FOURIER DE AMBAS OSCILACIONES
-Fs=5000;%Frecuencia de sampleo (=n? de puntos/tiempo de registro (s))
-L=length(envolvente);%c?lulo del tama?o de la variable
-NFFT=2^nextpow2(L);%optimizaci?n del tama?o de las variables para la FFT (el m?tiplo de 2 mayor m?s cercano)
-Y1=fft(LFP,NFFT)/L;%transformada ponderada de Fourier para LPF
-espectro1=2*abs(Y1(1:NFFT/2+1));%obtenci?n de la mitad de los valores absolutos del espectro espejo de LFP
-Y2=fft(envolvente,NFFT)/L;%transformada ponderada de Fourier para la envolvente
-espectro2=2*abs(Y2(1:NFFT/2+1));%obtenci?n de la mitad de los valores absolutos del espectro espejo de la envolvente
-filter=ones(1,100)/100;%filtro de 100 puntos para suavizar ambos espectros
-espectro1=conv(espectro1,filter,'same');%convoluci?n de LFP con el filtro
-espectro2=conv(espectro2,filter,'same');%convoluci?n de la envolvente con el filtro
-f=Fs/2*linspace(0,1,NFFT/2+1);%obtenci?n del rango de frecuencias a trav?s de la frecuencia de sampleo
+# TRANSFORMADA DE FOURIER DE AMBAS OSCILACIONES
+Fs=5000;# Frecuencia de sampleo (=n? de puntos/tiempo de registro (s))
+L=length(envolvente);# c?lulo del tama?o de la variable
+NFFT=2^nextpow2(L);# optimizaci?n del tama?o de las variables para la FFT (el m?tiplo de 2 mayor m?s cercano)
+Y1=fft(LFP,NFFT)/L;# transformada ponderada de Fourier para LPF
+espectro1=2*abs(Y1(1:NFFT/2+1));# obtenci?n de la mitad de los valores absolutos del espectro espejo de LFP
+Y2=fft(envolvente,NFFT)/L;# transformada ponderada de Fourier para la envolvente
+espectro2=2*abs(Y2(1:NFFT/2+1));# obtenci?n de la mitad de los valores absolutos del espectro espejo de la envolvente
+filter=ones(1,100)/100;# filtro de 100 puntos para suavizar ambos espectros
+espectro1=conv(espectro1,filter,'same');# convoluci?n de LFP con el filtro
+espectro2=conv(espectro2,filter,'same');# convoluci?n de la envolvente con el filtro
+f=Fs/2*linspace(0,1,NFFT/2+1);# obtenci?n del rango de frecuencias a trav?s de la frecuencia de sampleo
  
-%C?LCULO DE LA POTENCIA DE LA ENVOLVENTE
+# C?LCULO DE LA POTENCIA DE LA ENVOLVENTE
 fr5=5;
 tmp=abs(f-fr5);
 [~, inx4]=min(tmp);
@@ -141,70 +201,77 @@ for n=inx4:inx10
 end
 GenvPow=sum(Area);
  
-%C?LCULO DEL PICO M?XIMO DE FRECUENCIA
-cerotes=zeros(length(espectro2(1:inx4-1)),1);%prepara un vector de 0 para aislar theta
-newespectro2=vertcat(cerotes,espectro2(inx4:inx10));%concatena los ceros al rango de theta
+# C?LCULO DEL PICO M?XIMO DE FRECUENCIA
+cerotes=zeros(length(espectro2(1:inx4-1)),1);# prepara un vector de 0 para aislar theta
+newespectro2=vertcat(cerotes,espectro2(inx4:inx10));# concatena los ceros al rango de theta
 [~,inxMaxE]=max(newespectro2);
 GenvMax=f(inxMaxE);
  
-cerotes=zeros(length(espectro1(1:inx20-1)),1);%prepara un vector de 0 para aislar gamma
-newespectro1=vertcat(cerotes,espectro1(inx20:inx80));%concatena los ceros al rango de gamma
+cerotes=zeros(length(espectro1(1:inx20-1)),1);# prepara un vector de 0 para aislar gamma
+newespectro1=vertcat(cerotes,espectro1(inx20:inx80));# concatena los ceros al rango de gamma
 [~,inxMaxG]=max(newespectro1);
 GMax=f(inxMaxG);
  
  
-%GR?FICAS
+# GR?FICAS
 subplot(2,1,1)
 plot(f,espectro1,f,espectro2)
-axis([0 80 0 0.005]) %de 0 a 80 Hz y de 0 a 15e-3 mV2
+axis([0 80 0 0.005]) # de 0 a 80 Hz y de 0 a 15e-3 mV2
 subplot(2,1,2)
 plot(time,gamma,time,envolvente0,time,theta)
-axis([0 1 -0.35 0.35]) %de 0 a 1 s y de -0.1 a 0.1 mV
+axis([0 1 -0.35 0.35]) # de 0 a 1 s y de -0.1 a 0.1 mV
 shg
  
-% Cross-correlation Gamma Envelope-Theta
+#  Cross-correlation Gamma Envelope-Theta
+[acor,lag] = xcorr(envolvente,theta,'coeff');      # correlacion de las senyales
  
  
  
-[acor,lag] = xcorr(envolvente,theta,'coeff');      %correlacion de las senyales
- 
- 
- 
-[cor,I] = max((abs(acor)));%coeficiente de correlacion entre ambas senales 
-Peaklag = lag(I);% Posicicion del pico maximo 
-timeDiff = Peaklag/Fs; % lag en s del pico maximo
-Peaklagms = timeDiff*1000; % Peak lag en ms.
+[cor,I] = max((abs(acor)));# coeficiente de correlacion entre ambas senales 
+Peaklag = lag(I);#  Posicicion del pico maximo 
+timeDiff = Peaklag/Fs; #  lag en s del pico maximo
+Peaklagms = timeDiff*1000; #  Peak lag en ms.
  
 plot(lag/Fs,acor)
 axis([-0.5 0.5 -0.6 0.6])
 shg
  
-%Autocorrelation of gamma signal and Rhythmicity
+# Autocorrelation of gamma signal and Rhythmicity
+[acor,lag] = xcorr(gamma,500);      # correlacion de las senyales
+Nacor = acor/max(acor); # Normaliza el maximo de autocorrelation
+halfcor = Nacor(fix((length(acor)/2)):end); # mitad de la correlacion
+halftime = (lag(fix((length(lag)/2)):end))/Fs;# time of the corresponding lag in sec
  
-[acor,lag] = xcorr(gamma,500);      %correlacion de las senyales
-Nacor = acor/max(acor); %Normaliza el maximo de autocorrelation
-halfcor = Nacor(fix((length(acor)/2)):end); %mitad de la correlacion
-halftime = (lag(fix((length(lag)/2)):end))/Fs;%time of the corresponding lag in sec
+cor1 = halfcor; # redefine la variable halfcor
  
-cor1 = halfcor; %redefine la variable halfcor
+peaks = findpeaks(cor1);    # picos
+troughs = findpeaks(-cor1); # valles
  
-peaks = findpeaks(cor1);    %picos
-troughs = findpeaks(-cor1); %valles
- 
-A = peaks(2) + 1;        %identificaci?n del primer pico
-B = - troughs(1) + 1;  %identificaci?ndel segundo valle
+A = peaks(2) + 1;        # identificaci?n del primer pico
+B = - troughs(1) + 1;  # identificaci?ndel segundo valle
  
 Cr=(A-B)/(A+B);
  
-%plot(halftime,halfcor)
-%axis([0 0.1 -1  1])
-%shg
+# plot(halftime,halfcor)
+# axis([0 0.1 -1  1])
+# shg
  
 ```
 
-## 
+## Measurements to implement
+Phase syncrony (PS) https://www.rdocumentation.org/packages/synchrony/versions/0.3.8/topics/phase.sync
+Cross-frequenct phase synchrony (CFS)
+Phase-amplitude coupling (PAC)
+PAC-t https://github.com/muntam/TF-PAC
+https://www.nature.com/articles/s41598-019-48870-2
+
 1.Amplitud y frecuencia de la senal envolvente
 1. Acoplamiento de la senal enviolmente cin ka senak principla
 1. Acoplamiento de la senal evolvent eocn los potenciales de accion  
 
-
+# References  
+Cross-Frequency Phase–Phase Coupling between Theta and Gamma Oscillations in the Hippocampus
+Mariano A. Belluscio, Kenji Mizuseki, Robert Schmidt, Richard Kempter and György Buzsáki
+Journal of Neuroscience 11 January 2012, 32 (2) 423-435; DOI: https://doi.org/10.1523/JNEUROSCI.4122-11.2012
+https://www.jneurosci.org/content/32/2/423  
+https://towardsdatascience.com/four-ways-to-quantify-synchrony-between-time-series-data-b99136c4a9c9 
